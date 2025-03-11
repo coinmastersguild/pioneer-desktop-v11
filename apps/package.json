@@ -1,0 +1,43 @@
+{
+  "name": "@pioneer-platform/pioneer-cli",
+  "version": "0.2.8",
+  "description": "Pioneer Command-Line Interface",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "preferGlobal": true,
+  "bin": {
+    "pioneer": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "tsc -w",
+    "build": "tsc && chmod +x dist/cli.js",
+    "clean": "rimraf dist node_modules",
+    "lint": "eslint src",
+    "test": "pnpm build && ./tests/run-tests.sh",
+    "test:engine-version": "pnpm build && ./tests/test-engine-version-pass.sh",
+    "test:fail-example": "pnpm build && ./tests/test-nonexistent-command-fail.sh",
+    "cli": "node ./dist/cli.js",
+    "dev:cli": "ts-node ./src/cli.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.1",
+    "@pioneer-platform/pioneer-engine": "workspace:*",
+    "commander": "^12.0.0",
+    "chalk": "^4.1.2",
+    "express": "^4.18.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "rimraf": "^5.0.5",
+    "ts-node": "^8.10.2",
+    "typescript": "^5.5.3"
+  }
+}
