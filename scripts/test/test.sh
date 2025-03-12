@@ -22,30 +22,63 @@ fi
 # Otherwise test everything in dependency order
 log_info "Testing all packages..."
 
-# Check if we have turbo available
-if command -v turbo >/dev/null 2>&1; then
-    log_info "Using Turborepo for tests"
-    turbo test
-else
+# Force manual testing for now until Turbo is properly configured
+run_manual_tests=true
+
+if [ "$run_manual_tests" = true ]; then
     log_info "Running tests manually..."
     
     # Run CLI tests
     log_info "Running CLI tests..."
-    cd "${REPO_ROOT}/apps/cli"
-    if [ -f "./tests/run-tests.sh" ]; then
-        ./tests/run-tests.sh
+    if [ -d "${REPO_ROOT}/apps/cli" ]; then
+        cd "${REPO_ROOT}/apps/cli"
+        
+        # Run basic CLI tests
+        if [ -f "./tests/run-tests.sh" ]; then
+            log_info "Executing CLI basic tests..."
+            ./tests/run-tests.sh
+            if [ $? -ne 0 ]; then
+                log_error "CLI basic tests failed"
+                exit 1
+            fi
+        else
+            log_warning "CLI basic tests not found, skipping"
+        fi
+        
+        # Run the test-client
+        if [ -f "./dist/test-client.js" ]; then
+            log_info "Executing test-client..."
+            node ./dist/test-client.js
+            test_client_exit=$?
+            if [ $test_client_exit -ne 0 ]; then
+                log_error "test-client failed with exit code $test_client_exit"
+                exit 1
+            else
+                log_success "test-client completed successfully"
+            fi
+        else
+            log_warning "test-client.js not found in dist directory. Make sure the project is built correctly."
+        fi
     else
-        log_warning "CLI tests not found, skipping"
+        log_warning "CLI directory not found, skipping"
     fi
     
     # Add other package tests here as they become available
     # For example:
     # log_info "Running engine tests..."
-    # cd "${REPO_ROOT}/packages/engine"
-    # if [ -f "./tests/run-tests.sh" ]; then
-    #     ./tests/run-tests.sh
+    # if [ -d "${REPO_ROOT}/packages/engine" ]; then
+    #     cd "${REPO_ROOT}/packages/engine"
+    #     if [ -f "./tests/run-tests.sh" ]; then
+    #         ./tests/run-tests.sh
+    #         if [ $? -ne 0 ]; then
+    #             log_error "Engine tests failed"
+    #             exit 1
+    #         fi
+    #     else
+    #         log_warning "Engine tests not found, skipping"
+    #     fi
     # else
-    #     log_warning "Engine tests not found, skipping"
+    #     log_warning "Engine directory not found, skipping"
     # fi
 fi
 

@@ -18,7 +18,7 @@
     "dev": "tsc -w",
     "build": "tsc && chmod +x dist/cli.js",
     "clean": "rimraf dist node_modules",
-    "test": "pnpm build && ./tests/run-tests.sh"
+    "test": "pnpm build && ./tests/run-tests.sh && node dist/test-client.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.1",

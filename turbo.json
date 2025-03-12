@@ -15,8 +15,9 @@
       "cache": false
     },
     "test": {
-      "dependsOn": ["^build"],
-      "inputs": ["src/**/*.tsx", "src/**/*.ts", "test/**/*.ts", "test/**/*.tsx"]
+      "dependsOn": ["^build", "build"],
+      "inputs": ["src/**/*.tsx", "src/**/*.ts", "test/**/*.ts", "test/**/*.tsx", "tests/**/*"],
+      "outputs": []
     }
   }
 } 

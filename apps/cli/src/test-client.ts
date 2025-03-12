@@ -22,12 +22,17 @@ try {
 // Create a log file stream
 const logStream = fs.createWriteStream(clientLogPath, { flags: 'a' });
 
+// Track if the log stream is closed
+let logStreamClosed = false;
+
 // Helper function to log to both console and file
 function log(message: string) {
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] ${message}`;
   console.log(logMessage);
-  logStream.write(logMessage + '\n');
+  if (!logStreamClosed) {
+    logStream.write(logMessage + '\n');
+  }
 }
 
 // Log errors to both console and file
@@ -35,7 +40,9 @@ function logError(message: string) {
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] ERROR: ${message}`;
   console.error(logMessage);
-  logStream.write(logMessage + '\n');
+  if (!logStreamClosed) {
+    logStream.write(logMessage + '\n');
+  }
 }
 
 // Start with some system info
@@ -140,9 +147,9 @@ async function main() {
     serverProcess.kill();
     
     // Close the log file
-    logStream.end(() => {
-      log(`Log file closed: ${clientLogPath}`);
-    });
+    logStreamClosed = true;
+    logStream.end();
+    console.log(`Log file closed: ${clientLogPath}`);
   }
 }
 
