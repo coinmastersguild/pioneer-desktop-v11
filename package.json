@@ -5,9 +5,10 @@
   "description": "Pioneer Desktop Application with SQLite",
   "license": "MIT",
   "private": true,
+  "packageManager": "pnpm@8.15.5",
   "scripts": {
-    "dev": "cd apps/pioneer-desktop && pnpm run dev",
-    "build": "cd apps/pioneer-desktop && pnpm run build",
+    "dev": "cd apps/cli && pnpm run dev",
+    "build": "cd apps/cli && pnpm run build",
     "rebuild": "electron rebuild.js",
     "postinstall": "npm run rebuild",
     "version-bump": "node scripts/version-bump.js",
