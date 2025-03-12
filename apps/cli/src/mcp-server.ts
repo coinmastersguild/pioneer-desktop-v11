@@ -5,6 +5,11 @@ import { z } from "zod";
 import fs from 'fs';
 import path from 'path';
 
+import {
+  functions,
+  initializeFunctions
+} from './core/allFunctions';
+
 // Set up logging to a file in the user's home directory
 const logFile = path.join(process.env.HOME || '.', 'mcp-server-debug.log');
 const log = (msg: string) => {
@@ -19,9 +24,12 @@ log(`MCP server starting - PID: ${process.pid}`);
 log(`Log file: ${logFile}`);
 log(`Working directory: ${process.cwd()}`);
 
+// Initialize the functions
+initializeFunctions();
+
 // Create a new MCP server instance
 const server = new McpServer({
-  name: "password-server", // Use the name from working example
+  name: "pioneer-server", // Use the name from working example
   version: "1.0.0"         // Use version from working example
 });
 
@@ -50,6 +58,66 @@ server.tool(
       content: [{ 
         type: "text" as const,
         text: `You said: ${message}` 
+      }]
+    };
+  }
+);
+
+// Add more MCP tools based on our functions
+
+// Tool to capture prompts
+server.tool(
+  "capturePrompt",
+  { prompt: z.string() },
+  async ({ prompt }: { prompt: string }, _extra: any) => {
+    log(`capturePrompt tool called with: ${prompt}`);
+    functions.capturePrompt(prompt);
+    return {
+      content: [{ 
+        type: "text" as const,
+        text: "Prompt captured successfully" 
+      }]
+    };
+  }
+);
+
+// Tool to track performance metrics
+server.tool(
+  "trackPerformance",
+  { 
+    executionTime: z.number(),
+    memoryUsage: z.number().optional(),
+    cpuUsage: z.number().optional(),
+    additionalMetrics: z.record(z.any()).optional()
+  },
+  async (metrics: any, _extra: any) => {
+    log(`trackPerformance tool called with: ${JSON.stringify(metrics)}`);
+    functions.trackPerformance(metrics);
+    return {
+      content: [{ 
+        type: "text" as const,
+        text: "Performance metrics recorded" 
+      }]
+    };
+  }
+);
+
+// Tool to report cursor errors
+server.tool(
+  "reportError",
+  { 
+    message: z.string(),
+    stack: z.string().optional() 
+  },
+  async ({ message, stack }: { message: string, stack?: string }, _extra: any) => {
+    log(`reportError tool called with: ${message}`);
+    const error = new Error(message);
+    if (stack) error.stack = stack;
+    functions.onCursorError(error);
+    return {
+      content: [{ 
+        type: "text" as const,
+        text: "Error reported successfully" 
       }]
     };
   }
