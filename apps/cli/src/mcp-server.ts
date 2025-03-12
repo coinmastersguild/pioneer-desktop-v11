@@ -64,6 +64,42 @@ if (fs.existsSync(rulesFilePath)) {
   log(`Rules file not found at: ${rulesFilePath}`);
 }
 
+// Add an example Cursor rules file as a resource
+const cursorRulesContent = `# Cursor Rules Example File
+
+## Code Style
+- Use 2 space indentation for all files
+- Use camelCase for variable and function names
+- Use PascalCase for class names and React components
+- Include JSDoc comments for all public functions
+
+## Project Organization
+- Keep components in the components directory
+- Keep utilities in the utils directory
+- Test files should be adjacent to the files they test with .test.js suffix
+
+## Performance Guidelines
+- Avoid unnecessary re-renders in React components
+- Use React.memo and useCallback where appropriate
+- Minimize bundle size by avoiding large dependencies
+
+## Git Rules
+- Write descriptive commit messages
+- Create feature branches for new features
+- Always pull before pushing to main branch
+`;
+
+// Add the cursor rules content to our resources registry
+addResource(
+  "cursorules", 
+  cursorRulesContent, 
+  {
+    name: "Example Cursor Rules",
+    description: "Example rule set for configuring Cursor IDE behavior",
+    type: "markdown"
+  }
+);
+
 /* 
 // Register a getPassword tool that returns "foobar"
 server.tool(

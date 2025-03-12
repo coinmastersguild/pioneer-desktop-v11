@@ -101,6 +101,7 @@ async function main() {
     const tools = await client.listTools();
     log(JSON.stringify(tools, null, 2));
 
+    /* Commenting out these calls as these tools are not available
     // Call the getPassword tool
     log("\nCalling getPassword tool:");
     const passwordResult = await client.callTool({
@@ -131,6 +132,39 @@ async function main() {
       log(`Echo Response: ${echoContent[0].text}`);
     } else {
       logError(`Unexpected echo result format: ${JSON.stringify(echoResult)}`);
+    }
+    */
+
+    // Test listResources tool
+    log("\nCalling listResources tool:");
+    const resourcesResult = await client.callTool({
+      name: "listResources",
+      arguments: {}
+    });
+    
+    // Type assertion for accessing the response content
+    const resourcesContent = (resourcesResult as any).content;
+    if (resourcesContent && Array.isArray(resourcesContent) && resourcesContent.length > 0) {
+      log(`Available Resources: ${resourcesContent[0].text}`);
+    } else {
+      logError(`Unexpected resources result format: ${JSON.stringify(resourcesResult)}`);
+    }
+
+    // Test getResource tool for cursorules
+    log("\nCalling getResource tool for cursorules:");
+    const cursorRulesResult = await client.callTool({
+      name: "getResource",
+      arguments: {
+        resourceId: "cursorules"
+      }
+    });
+    
+    // Type assertion for accessing the response content
+    const cursorRulesContent = (cursorRulesResult as any).content;
+    if (cursorRulesContent && Array.isArray(cursorRulesContent) && cursorRulesContent.length > 0) {
+      log(`Cursor Rules Content:\n${cursorRulesContent[0].text}`);
+    } else {
+      logError(`Unexpected cursor rules result format: ${JSON.stringify(cursorRulesResult)}`);
     }
 
     log("\nTest completed successfully!");

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Define the log file path
-const LOG_FILE = path.join(process.env.HOME || '.', 'pioneer-cli-functions.log');
+const LOG_FILE = path.join(process.env.HOME || '.pioneer', 'pioneer-cli-functions.log');
 
 // Helper function to write to log file
 const writeToLog = (message: string): void => {
