@@ -1,6 +1,6 @@
 {
-  "name": "@pioneer-platform/pioneer-cli",
-  "version": "0.3.1",
+  "name": "@pioneer-platform/pioneer-cli-alpha",
+  "version": "0.0.1",
   "description": "Pioneer Command-Line Interface with MCP Server for Cursor",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
