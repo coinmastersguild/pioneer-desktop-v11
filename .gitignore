@@ -49,7 +49,8 @@ pnpm-debug.log*
 local-prs/*.patch
 
 # LLM working directory
-llm/
+llms/
+llms/*
 
 # Environment variables
 .env

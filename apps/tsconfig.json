@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
@@ -13,6 +13,6 @@
   },
   "include": ["src/**/*"],
   "references": [
-    { "path": "../../packages/pioneer-engine" }
+    // { "path": "../../packages/pioneer-engine" }
   ]
 } 

@@ -1,26 +1,25 @@
 /**
- * Pioneer CLI utility functions
+ * Pioneer CLI - MCP Server for Cursor Integration
  */
 
+// Get package version from package.json
+import fs from 'fs';
+import path from 'path';
+
+// Load the package.json for version information
+const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+const CLI_VERSION = packageJson.version || '0.3.1';
+
 /**
- * Simple placeholder for version check
+ * Get CLI version
  */
 export const getVersion = (): string => {
-  return '0.2.2';
+  return CLI_VERSION;
 };
 
 /**
- * Export empty class to maintain compatibility
+ * Export for module usage
  */
-export class PioneerCLI {
-  constructor(_options: any = {}) {
-    // No initialization needed for simplified version
-    // Parameter prefixed with underscore to indicate it's intentionally unused
-  }
-  
-  getEngineVersion(): string {
-    return 'Not available in standalone mode';
-  }
-}
-
-export default PioneerCLI; 
+export default {
+  getVersion
+}; 
