@@ -1,5 +1,5 @@
 {
-  "extends": "../tsconfig.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
@@ -12,7 +12,5 @@
     "allowImportingTsExtensions": false
   },
   "include": ["src/**/*"],
-  "references": [
-    // { "path": "../../packages/pioneer-engine" }
-  ]
+  "references": []
 } 
