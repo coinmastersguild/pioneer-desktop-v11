@@ -33,6 +33,38 @@ const server = new McpServer({
   version: "1.0.0"         // Use version from working example
 });
 
+// Custom resources registry
+const resources: Record<string, {content: string, metadata: any}> = {};
+
+// Function to add a resource
+const addResource = (resourceId: string, content: string, metadata: any) => {
+  resources[resourceId] = {
+    content,
+    metadata
+  };
+  log(`Added resource: ${resourceId}`);
+};
+
+// Load the rules document as a resource
+const rulesFilePath = path.resolve(process.cwd(), '../../.rules/rules.md');
+if (fs.existsSync(rulesFilePath)) {
+  const rulesContent = fs.readFileSync(rulesFilePath, 'utf-8');
+  
+  // Add the rules content to our resources registry
+  addResource(
+    "project-rules", 
+    rulesContent, 
+    {
+      name: "Pioneer Desktop Development Rules",
+      description: "Development guidelines and rules for the Pioneer Desktop project",
+      type: "markdown"
+    }
+  );
+} else {
+  log(`Rules file not found at: ${rulesFilePath}`);
+}
+
+/* 
 // Register a getPassword tool that returns "foobar"
 server.tool(
   "getPassword",
@@ -62,6 +94,7 @@ server.tool(
     };
   }
 );
+*/
 
 // Add more MCP tools based on our functions
 
@@ -81,6 +114,56 @@ server.tool(
   }
 );
 
+// Tool to access resources by ID
+server.tool(
+  "getResource",
+  { resourceId: z.string() },
+  async ({ resourceId }: { resourceId: string }, _extra: any) => {
+    log(`getResource tool called with ID: ${resourceId}`);
+    
+    // Check if the requested resource exists
+    if (resources[resourceId]) {
+      return {
+        content: [{ 
+          type: "text" as const,
+          text: resources[resourceId].content
+        }]
+      };
+    } else {
+      return {
+        content: [{ 
+          type: "text" as const,
+          text: `Resource with ID '${resourceId}' not found. Available resources: ${Object.keys(resources).join(', ')}`
+        }]
+      };
+    }
+  }
+);
+
+// Tool to list available resources
+server.tool(
+  "listResources",
+  {}, // No parameters needed
+  async (_args: {}, _extra: any) => {
+    log(`listResources tool called`);
+    
+    const resourcesList = Object.keys(resources).map(id => ({
+      id,
+      name: resources[id].metadata.name,
+      description: resources[id].metadata.description,
+      type: resources[id].metadata.type
+    }));
+    
+    return {
+      content: [{ 
+        type: "text" as const,
+        text: `Available resources: ${JSON.stringify(resourcesList, null, 2)}`
+      }]
+    };
+  }
+);
+
+/*
 // Tool to track performance metrics
 server.tool(
   "trackPerformance",
@@ -122,6 +205,7 @@ server.tool(
     };
   }
 );
+*/
 
 // Main function to start the server
 async function main() {
