@@ -54,3 +54,4 @@ local-prs/*.patch
 
 # Environment variables
 .env
+.aider*
