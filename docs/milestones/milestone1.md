@@ -1,33 +1,38 @@
 
+# Milestone 1: Initial Setup and Integration
 
-step 1. clone and run aider locally
+## Step 1: Clone and Run Aider Locally
+- Clone the Aider repository from GitHub.
+- Set up the local environment and ensure all dependencies are installed.
+- Run Aider locally to verify the setup.
 
-step 1. configure with openai
+## Step 2: Configure with OpenAI
+- Integrate OpenAI API keys into the environment configuration.
+- Verify that Aider can access and utilize OpenAI services.
+- Ensure directory tracking is enabled for Aider.
 
-can it view and track this dir?
+## Step 3: Process Execution Wrapper
+- Implement a process execution wrapper around Aider using `process.exec`.
+- Stream logs from Aider to a designated log file or console.
+- Ensure logs are accessible for debugging and monitoring.
 
+## Step 4: API Integration
+- Develop a REST API wrapper with WebSocket support for Aider.
+- Implement endpoints to pass commands to Aider via the API.
+- Use Bun for efficient server-side operations.
 
-step 2. can we wrap aider in a process.ecex wrapper and stream logs?
+## Step 5: Lifecycle Management
+- Define lifecycle states: NOT_CONFIGURED, RUNNING, HALTED.
+- Implement state transitions with diagnostic messages for HALTED state.
 
-step 3. can we pass in commands via api
+## Step 6: Apply Guild Protocol
+- Ensure all development follows the Guild's sprint and setup protocols.
+- Document each step and maintain compliance with the protocol.
 
-REST api wrapper with ws
+## Step 7: Monitoring and State Reporting
+- Implement monitoring to track real-time state within the protocol.
+- Develop an API to report the current state and health of the system.
 
-(bun)
-
-
-step 4, lifesycycle
-
-NOT_CONFIGURED
-
-RUNNING
-
-HALTED
-
-
-step 5. applying guild procol
-
-
-step 6. monitoring real state within the protocol and showing state over api
-
-step 7. live updating guild protocol and pushing to guild via PR
+## Step 8: Continuous Integration and Updates
+- Set up a system for live updates to the Guild protocol.
+- Automate the process of pushing updates to the Guild via pull requests.
