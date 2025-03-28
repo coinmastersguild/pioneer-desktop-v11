@@ -168,6 +168,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
+// Global variables for retry mechanism
+let pioneerRetryCount = 0;
+const MAX_PIONEER_RETRIES = 3;
+const RETRY_DELAY_MS = 5000;
+
 // Function to start the pioneer self-improvement thread
 async function startPioneerThread() {
   try {
@@ -176,10 +181,22 @@ async function startPioneerThread() {
     
     if (existingStatus && existingStatus.state === 'RUNNING') {
       console.log('Pioneer self-improvement thread is already running');
+      // Reset retry counter when thread is running
+      pioneerRetryCount = 0;
       return;
     }
     
-    console.log('Starting pioneer self-improvement thread...');
+    // If we've reached the max retries, wait longer before trying again
+    if (pioneerRetryCount >= MAX_PIONEER_RETRIES) {
+      console.log(`Pioneer thread has failed ${pioneerRetryCount} times. Waiting longer before retrying...`);
+      setTimeout(() => {
+        pioneerRetryCount = 0; // Reset counter after long wait
+        startPioneerThread();
+      }, RETRY_DELAY_MS * 10);
+      return;
+    }
+    
+    console.log(`Starting pioneer self-improvement thread (attempt ${pioneerRetryCount + 1})...`);
     
     // Get OpenAI API key from environment
     const openAIApiKey = process.env.OPENAI_API_KEY;
@@ -197,6 +214,9 @@ async function startPioneerThread() {
     });
     
     console.log('Pioneer self-improvement thread started successfully');
+    
+    // Reset retry counter on successful start
+    pioneerRetryCount = 0;
     
     // Send initial message to start the improvement process
     setTimeout(async () => {
@@ -239,7 +259,30 @@ async function startPioneerThread() {
       `Error starting thread: ${error instanceof Error ? error.message : String(error)}`,
       'error'
     );
+    
+    // Increment retry counter and try again after delay
+    pioneerRetryCount++;
+    console.log(`Will retry starting Pioneer thread in ${RETRY_DELAY_MS/1000} seconds (attempt ${pioneerRetryCount + 1})`);
+    setTimeout(startPioneerThread, RETRY_DELAY_MS);
   }
+}
+
+// Set up a watcher to restart the Pioneer thread if it fails
+function setupPioneerThreadWatcher() {
+  const checkInterval = 30000; // Check every 30 seconds
+  
+  console.log(`Setting up Pioneer thread watcher to check every ${checkInterval/1000} seconds`);
+  
+  setInterval(() => {
+    const status = aiderService.getStatus(PIONEER_THREAD_ID);
+    
+    if (!status || status.state !== 'RUNNING') {
+      console.log('Pioneer thread is not running. Attempting to restart...');
+      startPioneerThread().catch(err => {
+        console.error('Error in watcher when trying to restart Pioneer thread:', err);
+      });
+    }
+  }, checkInterval);
 }
 
 // Start server
@@ -256,6 +299,9 @@ server.listen(PORT, () => {
   startPioneerThread().catch(err => {
     console.error('Failed to start pioneer thread:', err);
   });
+  
+  // Set up watcher to restart Pioneer thread if it fails
+  setupPioneerThreadWatcher();
 });
 
 // Handle graceful shutdown

@@ -46,7 +46,9 @@ export default function InstancePage({ params }: InstanceProps) {
           setIsInstanceRunning(false);
         } else {
           setInstance(data);
-          setIsInstanceRunning(data.status.state === 'RUNNING');
+          // Safe access to nested properties
+          const isRunning = data.status && data.status.state === 'RUNNING';
+          setIsInstanceRunning(isRunning);
           setError(null);
         }
       } catch (err) {

@@ -104,7 +104,7 @@ export class LoggingService {
    * Broadcast a log message to all clients for a thread
    * @param threadId Thread to broadcast to
    * @param message Log message
-   * @param source Source of the message (user, aider, error)
+   * @param source Source of the message (user, aider, error, system, info)
    */
   public broadcastLog(threadId: string, message: string, source: 'user' | 'aider' | 'error' | 'system' | 'info' = 'aider') {
     const clients = this.clients.get(threadId);

@@ -83,12 +83,93 @@ export class AiderService {
   }
 
   /**
+   * Check and install required Python dependencies for Aider
+   * @returns Promise that resolves when dependencies are installed
+   */
+  private async checkAndInstallDependencies(): Promise<void> {
+    console.log('Checking for required Python dependencies...');
+    
+    return new Promise<void>((resolve, reject) => {
+      const { exec } = require('child_process');
+      
+      // Install required packages with pip
+      const cmd = `cd ${this.aiderRoot} && pip install pydub pyaudio`;
+      
+      console.log(`Installing dependencies: ${cmd}`);
+      
+      exec(cmd, (error: any, stdout: string, stderr: string) => {
+        if (error) {
+          console.error(`Error installing Python dependencies: ${error.message}`);
+          console.error(`stderr: ${stderr}`);
+          // Continue anyway, as some systems might not need these packages
+          resolve();
+          return;
+        }
+        
+        console.log(`Dependencies installed successfully: ${stdout}`);
+        if (stderr) console.error(`Install stderr: ${stderr}`);
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Apply patches to the Aider source code
+   * @private
+   */
+  private async applyPatches(): Promise<void> {
+    console.log('Applying patches to Aider source code...');
+    
+    return new Promise<void>((resolve, reject) => {
+      const { exec } = require('child_process');
+      const patchScript = path.join(__dirname, '../patches/apply-patches.js');
+      
+      // Check if patch script exists
+      if (!fs.existsSync(patchScript)) {
+        console.warn(`Patch script not found: ${patchScript}`);
+        resolve();
+        return;
+      }
+      
+      // Run the patch script
+      exec(`node ${patchScript}`, (error: any, stdout: string, stderr: string) => {
+        if (stdout) console.log(stdout);
+        if (stderr) console.error(stderr);
+        
+        if (error) {
+          console.error(`Error applying patches: ${error.message}`);
+          // Continue anyway to avoid blocking the service
+          resolve();
+          return;
+        }
+        
+        console.log('Patches applied successfully');
+        resolve();
+      });
+    });
+  }
+
+  /**
    * Start Aider instance for a given thread
    * @param threadId Unique identifier for this Aider instance
    * @param config Configuration for this Aider instance
    * @returns Status of the started instance
    */
   public async startAider(threadId: string, config: AiderConfiguration): Promise<AiderStatus> {
+    // Apply patches first
+    try {
+      await this.applyPatches();
+    } catch (error) {
+      console.warn('Failed to apply patches, continuing anyway:', error);
+    }
+    
+    // Check and install dependencies
+    try {
+      await this.checkAndInstallDependencies();
+    } catch (error) {
+      console.warn('Failed to install dependencies, continuing anyway:', error);
+    }
+    
     // If githubUrl is provided but no projectRoot, 
     // use a standard location based on the repository name
     if (config.githubUrl && !config.projectRoot) {
@@ -171,7 +252,8 @@ export class AiderService {
         '-m', 'aider.command_interpreter',  // Use our command interpreter
         config.projectRoot || '',  // Pass project root as positional argument
         '--model', config.model || 'gpt-4',
-        '--verbose'
+        '--verbose',
+        '--no-voice'  // Disable voice support to avoid dependency issues
       ];
       
       if (config.autoCommit) {
@@ -185,17 +267,23 @@ export class AiderService {
           ...process.env,
           OPENAI_API_KEY: config.openAIApiKey,
           GITHUB_TOKEN: config.githubToken || '',
-          AIDER_PROJECT_ROOT: config.projectRoot || '' // Also pass as environment variable
+          AIDER_PROJECT_ROOT: config.projectRoot || '', // Also pass as environment variable
+          AIDER_VOICE_DISABLED: 'True' // Force disable voice module
         },
         stdio: ['pipe', 'pipe', 'pipe']
       });
+      
+      // Validate that the process started correctly
+      if (!aiderProcess.pid) {
+        throw new Error('Failed to start Aider process');
+      }
       
       // Create initial status
       const status: AiderStatus = {
         state: AiderState.RUNNING,
         diagnosticMessage: 'Aider started successfully',
         threadId,
-        configuration: config
+        configuration: { ...config, openAIApiKey: '***' } // Mask API key in status
       };
       
       // Store the running instance
@@ -234,20 +322,29 @@ export class AiderService {
       });
       
       aiderProcess.stderr.on('data', (data) => {
-        this.loggingService.broadcastLog(threadId, `ERROR: ${data.toString()}`, 'error');
+        const errorText = data.toString();
+        console.error(`Aider error (${threadId}):`, errorText);
+        this.loggingService.broadcastLog(threadId, `ERROR: ${errorText}`, 'error');
       });
       
       // Handle process exit
-      aiderProcess.on('exit', (code) => {
+      aiderProcess.on('exit', (code, signal) => {
+        console.log(`Aider process for thread ${threadId} exited with code ${code} and signal ${signal || 'none'}`);
+        
         const instance = this.instances.get(threadId);
         if (instance) {
           instance.status.state = code === 0 ? AiderState.COMPLETED : AiderState.HALTED;
           instance.status.diagnosticMessage = code === 0 
             ? 'Completed successfully' 
-            : `Process exited with code ${code}`;
+            : `Process exited with code ${code}${signal ? ` (signal: ${signal})` : ''}`;
           instance.process = null;
           
-          this.loggingService.broadcastLog(threadId, `Aider process exited with code ${code}`);
+          this.loggingService.broadcastLog(
+            threadId, 
+            `Aider process exited with code ${code}${signal ? ` (signal: ${signal})` : ''}`,
+            code === 0 ? 'system' : 'error'
+          );
+          
           this.persistState(threadId);
         }
       });
