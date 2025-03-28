@@ -1,0 +1,5 @@
+status: RED
+last_updated: 2025-03-25T17:28:57Z
+health_check: FAIL
+e2e_tests: N/A
+notes: Docker is not running

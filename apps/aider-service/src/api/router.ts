@@ -11,12 +11,52 @@ export default function createRouter(aiderService: AiderService): Router {
   const router = Router();
 
   /**
-   * Health check endpoint
+   * Health check endpoint - MAGA-compliant
    */
   router.get('/health', (req: Request, res: Response) => {
+    // Process metrics
+    const uptime = process.uptime();
+    const memoryUsage = process.memoryUsage();
+    
+    // Get instance counts to verify service functionality
+    const runningInstances = Array.from(aiderService.getAllStatuses().values())
+      .filter(status => status.state === AiderState.RUNNING).length;
+    
+    // Service status assessment
+    let status = 'UP';
+    const components: Record<string, {status: string, details?: any}> = {
+      aider: { 
+        status: 'UP',
+        details: { version: 'Aider service activated' }
+      },
+      database: { 
+        status: aiderService.isDatabaseConnected() ? 'UP' : 'DOWN' 
+      }
+    };
+    
+    // If database is down, service is degraded
+    if (components.database.status === 'DOWN') {
+      status = 'DEGRADED';
+    }
+
+    // MAGA-compliant health response
     res.json({
-      status: 'ok',
-      version: '1.0.0'
+      status,
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      uptime,
+      components,
+      metrics: {
+        memory: {
+          rss: Math.round(memoryUsage.rss / 1024 / 1024) + 'MB',
+          heapTotal: Math.round(memoryUsage.heapTotal / 1024 / 1024) + 'MB',
+          heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024) + 'MB'
+        },
+        instances: {
+          running: runningInstances,
+          total: aiderService.getAllStatuses().size
+        }
+      }
     });
   });
 

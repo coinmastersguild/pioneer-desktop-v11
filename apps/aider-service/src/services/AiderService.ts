@@ -14,6 +14,7 @@ export interface AiderConfiguration {
   model?: string;
   projectRoot: string;
   allowedFileTypes?: string[];
+  autoCommit?: boolean;
 }
 
 /**
@@ -41,6 +42,8 @@ export class AiderService {
   private loggingService: LoggingService;
   private static readonly STATE_COLLECTION = 'aider_states';
   private mongoUri?: string;
+  private mongoClient: MongoClient | null = null;
+  private dbConnected: boolean = false;
 
   /**
    * Create a new AiderService
@@ -48,14 +51,33 @@ export class AiderService {
    * @param mongoUri Optional MongoDB connection URI for state persistence
    */
   constructor(loggingService: LoggingService, mongoUri?: string) {
-    // Path to the Aider submodule
-    this.aiderRoot = path.resolve(__dirname, '../../../..', 'aider');
+    // Check possible locations for Aider
+    const possiblePaths = [
+      '/app/aider', // Docker mounted path
+      path.resolve(__dirname, '../../../..', 'aider'), // Local dev path
+      path.resolve(__dirname, '../../..', 'aider'), // Alternative path
+      '/aider' // Another possible Docker path
+    ];
+    
+    // Find the first valid path
+    this.aiderRoot = possiblePaths.find(p => fs.existsSync(p)) || '';
+    
     this.loggingService = loggingService;
     this.mongoUri = mongoUri;
     
     // Validate Aider installation
-    if (!fs.existsSync(this.aiderRoot)) {
-      throw new Error(`Aider not found at ${this.aiderRoot}. Run 'git submodule update --init --recursive'`);
+    if (!this.aiderRoot) {
+      console.error('Tried these paths for Aider:', possiblePaths);
+      throw new Error(`Aider not found. Run 'git submodule update --init --recursive'`);
+    }
+    
+    console.log(`Using Aider installation at: ${this.aiderRoot}`);
+
+    // Initialize database connection if URI provided
+    if (mongoUri) {
+      this.initDbConnection(mongoUri).catch(err => {
+        console.error('Failed to initialize database connection:', err);
+      });
     }
   }
 
@@ -78,27 +100,26 @@ export class AiderService {
     }
 
     try {
-      // Build command-line arguments
-      const args = ['-m', 'aider.main'];
+      // Build command-line arguments for command interpreter
+      const args = [
+        '-m', 'aider.command_interpreter',  // Use our command interpreter
+        config.projectRoot,  // Pass project root as positional argument
+        '--model', config.model || 'gpt-4',
+        '--verbose'
+      ];
       
-      // Add repository path if provided
-      if (config.projectRoot) {
-        args.push(config.projectRoot);
+      if (config.autoCommit) {
+        args.push('--auto-commit');
       }
       
-      // Add model if provided
-      if (config.model) {
-        args.push('--model');
-        args.push(config.model);
-      }
-      
-      // Execute Aider
+      // Execute Aider with command interpreter
       const aiderProcess = spawn('python3', args, {
-        cwd: this.aiderRoot,
+        cwd: this.aiderRoot,  // Run from aider directory where the module is
         env: {
           ...process.env,
           OPENAI_API_KEY: config.openAIApiKey,
-          GITHUB_TOKEN: config.githubToken || ''
+          GITHUB_TOKEN: config.githubToken || '',
+          AIDER_PROJECT_ROOT: config.projectRoot // Also pass as environment variable
         },
         stdio: ['pipe', 'pipe', 'pipe']
       });
@@ -119,13 +140,35 @@ export class AiderService {
         lastActivity: new Date()
       });
       
-      // Set up output handlers
+      // Set up output parsers for JSON responses
+      let buffer = '';
+      
       aiderProcess.stdout.on('data', (data) => {
-        this.loggingService.broadcastLog(threadId, data.toString());
+        const text = data.toString();
+        buffer += text;
+        
+        // Check if we have complete JSON in the buffer
+        if (this.isCompleteJson(buffer)) {
+          try {
+            const response = JSON.parse(buffer);
+            // Process structured response
+            this.handleStructuredResponse(threadId, response);
+            // Clear buffer after successful parsing
+            buffer = '';
+          } catch (error) {
+            // Not a JSON response or malformed JSON
+            // Log the raw output and continue accumulating
+            this.loggingService.broadcastLog(threadId, text);
+          }
+        } else if (text.includes('\n')) {
+          // If we have newlines but not complete JSON, it's probably regular output
+          this.loggingService.broadcastLog(threadId, text);
+          buffer = ''; // Clear non-JSON buffer
+        }
       });
       
       aiderProcess.stderr.on('data', (data) => {
-        this.loggingService.broadcastLog(threadId, `ERROR: ${data.toString()}`);
+        this.loggingService.broadcastLog(threadId, `ERROR: ${data.toString()}`, 'error');
       });
       
       // Handle process exit
@@ -142,6 +185,9 @@ export class AiderService {
           this.persistState(threadId);
         }
       });
+      
+      // Wait a moment for initialization
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Persist the initial state
       await this.persistState(threadId);
@@ -170,6 +216,57 @@ export class AiderService {
   }
   
   /**
+   * Check if a string contains a complete JSON object
+   * @param str String to check
+   * @private
+   */
+  private isCompleteJson(str: string): boolean {
+    try {
+      // Try to parse the string as JSON
+      JSON.parse(str);
+      // If parsing succeeds and the string starts with '{' and ends with '}', it's complete JSON
+      return str.trim().startsWith('{') && str.trim().endsWith('}');
+    } catch (e) {
+      // If parsing fails, it's not complete JSON
+      return false;
+    }
+  }
+
+  /**
+   * Handle a structured response from the command interpreter
+   * @param threadId Thread ID that produced the response
+   * @param response Structured response object
+   * @private
+   */
+  private handleStructuredResponse(threadId: string, response: any): void {
+    // Log the main output
+    if (response.output) {
+      this.loggingService.broadcastLog(threadId, response.output);
+    }
+    
+    // Log any errors
+    if (response.error) {
+      this.loggingService.broadcastLog(threadId, `ERROR: ${response.error}`, 'error');
+    }
+    
+    // Log any warnings
+    if (response.warnings && response.warnings.length > 0) {
+      for (const warning of response.warnings) {
+        this.loggingService.broadcastLog(threadId, `WARNING: ${warning}`, 'info');
+      }
+    }
+    
+    // Log file changes
+    if (response.files_changed && response.files_changed.length > 0) {
+      this.loggingService.broadcastLog(
+        threadId, 
+        `Files changed: ${response.files_changed.join(', ')}`,
+        'info'
+      );
+    }
+  }
+
+  /**
    * Stop a running Aider instance
    * @param threadId The thread ID to stop
    * @returns Updated status of the stopped instance
@@ -190,6 +287,9 @@ export class AiderService {
         instance.status.state = AiderState.HALTED;
         instance.status.diagnosticMessage = 'Stopped by user request';
         instance.process = null;
+        
+        this.loggingService.broadcastLog(threadId, `Aider process exited with code ${0}`);
+        this.persistState(threadId);
       }
       
       await this.persistState(threadId);
@@ -235,14 +335,23 @@ export class AiderService {
     if (!instance?.process?.stdin) return false;
     
     return new Promise<boolean>((resolve) => {
-      instance.process!.stdin!.write(command + '\n', (err) => {
+      // Format command for our command interface
+      // If it's a / command, send it directly, otherwise format as JSON
+      const formattedCommand = command.startsWith('/') 
+        ? command + '\n' 
+        : JSON.stringify({ command }) + '\n';
+
+      instance.process!.stdin!.write(formattedCommand, (err) => {
         if (err) {
-          this.loggingService.broadcastLog(threadId, `Error sending command: ${err.message}`);
+          this.loggingService.broadcastLog(threadId, `Error sending command: ${err.message}`, 'error');
           resolve(false);
         } else {
           // Update last activity time
           instance.lastActivity = new Date();
           this.persistState(threadId);
+          
+          // Log the command
+          this.loggingService.broadcastLog(threadId, `Command sent: ${command}`);
           resolve(true);
         }
       });
@@ -337,6 +446,32 @@ export class AiderService {
       await client.close();
     } catch (error) {
       console.error(`Failed to persist state for thread ${threadId}:`, error);
+    }
+  }
+
+  /**
+   * Check if the database is connected
+   * @returns Whether the database is connected
+   */
+  public isDatabaseConnected(): boolean {
+    return this.dbConnected;
+  }
+
+  /**
+   * Initialize database connection
+   * @param uri MongoDB connection URI
+   */
+  private async initDbConnection(uri: string): Promise<void> {
+    try {
+      this.mongoClient = new MongoClient(uri);
+      await this.mongoClient.connect();
+      // Test connection with a simple command
+      await this.mongoClient.db().command({ ping: 1 });
+      this.dbConnected = true;
+      console.log('MongoDB connection established successfully');
+    } catch (error) {
+      this.dbConnected = false;
+      console.error('MongoDB connection failed:', error);
     }
   }
 }
