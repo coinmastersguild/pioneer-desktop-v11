@@ -1,0 +1,30 @@
+
+old scripts
+
+"scripts": {
+"dev": "cd apps/cli && pnpm run dev",
+"build": "cd apps/cli && pnpm run build",
+"rebuild": "electron rebuild.js",
+"postinstall": "npm run rebuild",
+"version-bump": "node skills/version-bump.js",
+"cli:dev": "cd apps/cli && pnpm run dev",
+"cli:build": "cd apps/cli && pnpm run build",
+"cli:test": "cd apps/cli && pnpm run test",
+"cli:mcp": "cd apps/cli && node dist/cli.js mcp-stdio",
+"git": "skills/git-wrapper.sh",
+"git:status": "skills/git-wrapper.sh status",
+"git:checkout": "skills/git-wrapper.sh checkout",
+"git:pull": "skills/git-wrapper.sh pull",
+"git:push": "skills/git-wrapper.sh push",
+"git:feature": "skills/git-wrapper.sh checkout -b feature-",
+"git:hotfix": "skills/git-wrapper.sh checkout -b hotfix-",
+"git:release": "skills/git-wrapper.sh checkout -b release-",
+"pr:create": "skills/local-pr.sh create",
+"pr:review": "skills/local-pr.sh review",
+"pr:merge": "skills/local-pr.sh merge",
+"changeset": "changeset",
+"version-packages": "changeset version",
+"build-packages": "pnpm --filter @pioneer-platform/pioneer-engine build && pnpm --filter @pioneer-platform/pioneer-cli build",
+"publish-packages": "pnpm build-packages && changeset publish --no-git-tag",
+"quick-publish": "CHANGESET_SKIP_CONFIRMATION=1 pnpm changeset add --empty && CHANGESET_SKIP_CONFIRMATION=1 pnpm version-packages && pnpm publish-packages"
+},

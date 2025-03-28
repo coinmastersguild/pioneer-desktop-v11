@@ -1,10 +1,11 @@
-import WebSocket from 'ws';
+import { Server as HttpServer } from 'http';
+import { Server as SocketServer, Socket } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
- * Log message structure
+ * Interface for LogMessage
  */
-export interface LogMessage {
+interface LogMessage {
   id: string;
   timestamp: Date;
   threadId: string;
@@ -13,181 +14,156 @@ export interface LogMessage {
 }
 
 /**
- * Service to handle logging and real-time communication via WebSockets
+ * Interface for socket join data
+ */
+interface JoinData {
+  threadId: string;
+}
+
+/**
+ * Service for collecting and broadcasting logs
  */
 export class LoggingService {
-  private wss: WebSocket.Server;
-  private clients: Map<WebSocket, {
-    threadId?: string;
-    lastActivity: Date;
-  }> = new Map();
-
+  private io: SocketServer;
+  private clients: Map<string, Set<Socket>> = new Map();
+  
   // In-memory log buffer (could be replaced with a persistent store)
   private messageBuffer: Map<string, LogMessage[]> = new Map();
   private bufferSize = 500; // Max messages per thread
-
+  
   /**
-   * Create a new LoggingService
-   * @param server HTTP server to attach WebSocket server to
+   * Create a new logging service
+   * @param server HTTP server to attach socket.io to
    */
-  constructor(server: any) {
-    // Initialize WebSocket server
-    this.wss = new WebSocket.Server({ server });
-    
-    // Setup connection handling
-    this.wss.on('connection', this.handleConnection.bind(this));
-    
-    // Set up periodic check for inactive clients
-    setInterval(this.cleanupInactiveClients.bind(this), 60000);
+  constructor(server: HttpServer) {
+    this.io = new SocketServer(server, {
+      cors: {
+        origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:3003', 'http://localhost:3100'],
+        methods: ['GET', 'POST'],
+        credentials: true
+      },
+      transports: ['websocket', 'polling']
+    });
     
     console.log('LoggingService initialized with WebSocket server');
-  }
-
-  /**
-   * Handle new WebSocket connections
-   * @param ws WebSocket connection
-   */
-  private handleConnection(ws: WebSocket): void {
-    // Register the new client
-    this.clients.set(ws, {
-      lastActivity: new Date()
-    });
     
-    console.log(`New WebSocket connection established, total clients: ${this.clients.size}`);
-    
-    // Set up message handler for client commands
-    ws.on('message', (message: string) => {
-      try {
-        const data = JSON.parse(message);
-        this.handleClientMessage(ws, data);
-      } catch (error) {
-        ws.send(JSON.stringify({
-          type: 'error',
-          message: 'Invalid message format'
-        }));
-      }
-    });
-    
-    // Handle disconnection
-    ws.on('close', () => {
-      this.clients.delete(ws);
-      console.log(`WebSocket connection closed, remaining clients: ${this.clients.size}`);
-    });
-    
-    // Send initial welcome message
-    ws.send(JSON.stringify({
-      type: 'info',
-      message: 'Connected to Aider Logging Service'
-    }));
+    this.setupSocketHandlers();
   }
   
   /**
-   * Handle messages from WebSocket clients
-   * @param ws WebSocket connection
-   * @param data Message data
+   * Set up socket.io event handlers
    */
-  private handleClientMessage(ws: WebSocket, data: any): void {
-    // Update last activity time
-    const client = this.clients.get(ws);
-    if (!client) return;
-    
-    client.lastActivity = new Date();
-    
-    // Handle subscription to thread
-    if (data.type === 'subscribe' && data.threadId) {
-      client.threadId = data.threadId;
-      console.log(`Client subscribed to thread: ${data.threadId}`);
+  private setupSocketHandlers() {
+    this.io.on('connection', (socket: Socket) => {
+      console.log('New WebSocket connection established, total clients:', this.getTotalClients() + 1);
       
-      // Send buffer of messages for this thread
-      const messages = this.messageBuffer.get(data.threadId) || [];
-      if (messages.length > 0) {
-        ws.send(JSON.stringify({
-          type: 'history',
-          threadId: data.threadId,
-          messages
-        }));
-      }
+      socket.on('join', (data: JoinData) => {
+        if (!data.threadId) {
+          console.error('Join request missing threadId');
+          return;
+        }
+        
+        const threadId = data.threadId;
+        
+        // Add socket to client set for this thread
+        if (!this.clients.has(threadId)) {
+          this.clients.set(threadId, new Set());
+        }
+        
+        this.clients.get(threadId)?.add(socket);
+        
+        console.log(`Client joined thread: ${threadId}, clients for thread: ${this.clients.get(threadId)?.size}`);
+        
+        // Send welcome message
+        socket.emit('log', {
+          source: 'system',
+          message: `Connected to thread: ${threadId}`
+        });
+      });
+      
+      socket.on('disconnect', () => {
+        // Remove socket from all thread client sets
+        for (const [threadId, clients] of this.clients.entries()) {
+          if (clients.has(socket)) {
+            clients.delete(socket);
+            console.log(`Client removed from thread: ${threadId}, remaining clients: ${clients.size}`);
+            
+            // Clean up empty sets
+            if (clients.size === 0) {
+              this.clients.delete(threadId);
+            }
+          }
+        }
+        
+        console.log('WebSocket connection closed, remaining clients:', this.getTotalClients());
+      });
+    });
+  }
+  
+  /**
+   * Broadcast a log message to all clients for a thread
+   * @param threadId Thread to broadcast to
+   * @param message Log message
+   * @param source Source of the message (user, aider, error)
+   */
+  public broadcastLog(threadId: string, message: string, source: 'user' | 'aider' | 'error' | 'system' | 'info' = 'aider') {
+    const clients = this.clients.get(threadId);
+    
+    if (!clients || clients.size === 0) {
+      // No clients connected for this thread
+      return;
     }
     
-    // Handle unsubscribe
-    if (data.type === 'unsubscribe') {
-      client.threadId = undefined;
-      console.log('Client unsubscribed from thread');
+    const logMessage = {
+      source,
+      message
+    };
+    
+    // Broadcast to all clients for this thread
+    for (const client of clients) {
+      client.emit('log', logMessage);
     }
-  }
 
-  /**
-   * Broadcast a log message to all clients subscribed to a thread
-   * @param threadId Thread ID to broadcast to
-   * @param content Message content
-   * @param level Message level (default: 'info')
-   */
-  public broadcastLog(threadId: string, content: string, level: 'info' | 'error' | 'debug' = 'info'): void {
-    const message: LogMessage = {
+    // Also store in the buffer
+    this.addToBuffer(threadId, {
       id: uuidv4(),
       timestamp: new Date(),
       threadId,
-      content,
-      level
-    };
-    
-    // Add to buffer
-    this.addToBuffer(threadId, message);
-    
-    // Convert to string once
-    const messageStr = JSON.stringify({
-      type: 'log',
-      message
-    });
-    
-    // Send to all clients subscribed to this thread
-    this.clients.forEach((client, ws) => {
-      if (client.threadId === threadId && ws.readyState === WebSocket.OPEN) {
-        ws.send(messageStr);
-      }
+      content: message,
+      level: source === 'error' ? 'error' : 'info'
     });
   }
   
   /**
+   * Get the total number of connected clients across all threads
+   * @returns Total client count
+   */
+  private getTotalClients(): number {
+    let total = 0;
+    for (const clients of this.clients.values()) {
+      total += clients.size;
+    }
+    return total;
+  }
+
+  /**
    * Add a message to the buffer for a thread
    * @param threadId Thread ID
-   * @param message Log message
+   * @param message Message to add
    */
   private addToBuffer(threadId: string, message: LogMessage): void {
     // Get or create buffer for this thread
-    const threadBuffer = this.messageBuffer.get(threadId) || [];
+    let threadBuffer = this.messageBuffer.get(threadId) || [];
     
-    // Add message to buffer
-    threadBuffer.push(message);
+    // Add message to beginning for newest-first order
+    threadBuffer.unshift(message);
     
     // Trim buffer if needed
     if (threadBuffer.length > this.bufferSize) {
-      threadBuffer.splice(0, threadBuffer.length - this.bufferSize);
+      threadBuffer = threadBuffer.slice(0, this.bufferSize);
     }
     
     // Update buffer
     this.messageBuffer.set(threadId, threadBuffer);
-  }
-  
-  /**
-   * Remove inactive clients to prevent memory leaks
-   */
-  private cleanupInactiveClients(): void {
-    const now = new Date();
-    let removed = 0;
-    
-    this.clients.forEach((client, ws) => {
-      // Check if inactive for more than 30 minutes
-      const inactiveTime = now.getTime() - client.lastActivity.getTime();
-      if (inactiveTime > 30 * 60 * 1000) {
-        ws.terminate();
-        this.clients.delete(ws);
-        removed++;
-      }
-    });
-    
-    if (removed > 0) {
-      console.log(`Cleaned up ${removed} inactive WebSocket connections`);
-    }
   }
 }

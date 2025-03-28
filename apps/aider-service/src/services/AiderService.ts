@@ -9,10 +9,11 @@ import { MongoClient } from 'mongodb';
  * Configuration for Aider instances
  */
 export interface AiderConfiguration {
-  openAIApiKey: string;
+  openAIApiKey?: string;
   githubToken?: string;
   model?: string;
-  projectRoot: string;
+  projectRoot?: string;
+  githubUrl?: string;
   allowedFileTypes?: string[];
   autoCommit?: boolean;
 }
@@ -88,6 +89,71 @@ export class AiderService {
    * @returns Status of the started instance
    */
   public async startAider(threadId: string, config: AiderConfiguration): Promise<AiderStatus> {
+    // If githubUrl is provided but no projectRoot, 
+    // use a standard location based on the repository name
+    if (config.githubUrl && !config.projectRoot) {
+      // Extract repository name from GitHub URL
+      const urlParts = config.githubUrl.split('/');
+      const repoName = urlParts[urlParts.length - 1];
+      
+      // Set standard project directory
+      config.projectRoot = `/tmp/aider-repos/${repoName}`;
+      
+      // Clone repository if needed
+      try {
+        // Check if directory exists
+        if (!fs.existsSync(config.projectRoot)) {
+          console.log(`Cloning repository ${config.githubUrl} to ${config.projectRoot}`);
+          
+          // Create directory if it doesn't exist
+          fs.mkdirSync('/tmp/aider-repos', { recursive: true });
+          
+          // Clone repository
+          const { exec } = require('child_process');
+          await new Promise((resolve, reject) => {
+            exec(`git clone ${config.githubUrl} ${config.projectRoot}`, (error: any, stdout: string, stderr: string) => {
+              if (error) {
+                console.error(`Error cloning repository: ${error.message}`);
+                reject(error);
+                return;
+              }
+              console.log(`Repository cloned successfully: ${stdout}`);
+              if (stderr) console.error(`Clone stderr: ${stderr}`);
+              resolve(stdout);
+            });
+          });
+        } else {
+          console.log(`Repository directory already exists: ${config.projectRoot}`);
+          
+          // Pull latest changes
+          const { exec } = require('child_process');
+          await new Promise((resolve, reject) => {
+            exec(`cd ${config.projectRoot} && git pull`, (error: any, stdout: string, stderr: string) => {
+              if (error) {
+                console.error(`Error pulling repository: ${error.message}`);
+                reject(error);
+                return;
+              }
+              console.log(`Repository updated successfully: ${stdout}`);
+              if (stderr) console.error(`Pull stderr: ${stderr}`);
+              resolve(stdout);
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Error preparing repository:', error);
+        throw new Error(`Failed to prepare repository: ${error}`);
+      }
+    }
+    
+    // Use default OpenAI API key if not provided
+    if (!config.openAIApiKey) {
+      config.openAIApiKey = process.env.OPENAI_API_KEY || '';
+      if (!config.openAIApiKey) {
+        throw new Error('OpenAI API key is required but not provided');
+      }
+    }
+    
     // Validate configuration
     this.validateConfig(config);
 
@@ -103,7 +169,7 @@ export class AiderService {
       // Build command-line arguments for command interpreter
       const args = [
         '-m', 'aider.command_interpreter',  // Use our command interpreter
-        config.projectRoot,  // Pass project root as positional argument
+        config.projectRoot || '',  // Pass project root as positional argument
         '--model', config.model || 'gpt-4',
         '--verbose'
       ];
@@ -119,7 +185,7 @@ export class AiderService {
           ...process.env,
           OPENAI_API_KEY: config.openAIApiKey,
           GITHUB_TOKEN: config.githubToken || '',
-          AIDER_PROJECT_ROOT: config.projectRoot // Also pass as environment variable
+          AIDER_PROJECT_ROOT: config.projectRoot || '' // Also pass as environment variable
         },
         stdio: ['pipe', 'pipe', 'pipe']
       });
@@ -252,7 +318,7 @@ export class AiderService {
     // Log any warnings
     if (response.warnings && response.warnings.length > 0) {
       for (const warning of response.warnings) {
-        this.loggingService.broadcastLog(threadId, `WARNING: ${warning}`, 'info');
+        this.loggingService.broadcastLog(threadId, `WARNING: ${warning}`, 'system');
       }
     }
     
@@ -261,7 +327,7 @@ export class AiderService {
       this.loggingService.broadcastLog(
         threadId, 
         `Files changed: ${response.files_changed.join(', ')}`,
-        'info'
+        'system'
       );
     }
   }
@@ -405,12 +471,18 @@ export class AiderService {
     }
     
     if (!config.projectRoot) {
-      throw new Error('Project root directory is required');
+      throw new Error('Project root is required');
     }
     
-    // Ensure directory exists
+    // Check if the project root exists
     if (!fs.existsSync(config.projectRoot)) {
-      throw new Error(`Project directory not found: ${config.projectRoot}`);
+      throw new Error(`Project root directory does not exist: ${config.projectRoot}`);
+    }
+    
+    // Check if it's a Git repository
+    const gitDir = path.join(config.projectRoot, '.git');
+    if (!fs.existsSync(gitDir)) {
+      throw new Error(`Project root is not a Git repository: ${config.projectRoot}`);
     }
   }
   

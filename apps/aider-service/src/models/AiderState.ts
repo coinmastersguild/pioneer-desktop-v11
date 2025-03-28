@@ -51,9 +51,11 @@ export interface AiderProject {
  * Interface for Aider configuration
  */
 export interface AiderConfiguration {
-  openAIApiKey: string;
+  openAIApiKey?: string;
   githubToken?: string;
   model?: string;
-  projectRoot: string;
+  projectRoot?: string;
+  githubUrl?: string;
   allowedFileTypes?: string[];
+  autoCommit?: boolean;
 }

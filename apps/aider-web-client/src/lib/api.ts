@@ -11,9 +11,26 @@ let API_URL = DEFAULT_API_URL;
 
 // Update the API URL on the client side
 if (typeof window !== 'undefined') {
-  API_URL = window.location.pathname.startsWith('/app') 
-    ? '/api' // When served from /app path, use relative URL
-    : 'http://localhost:3100/api'; // Direct access
+  // In development, always use the absolute URL to avoid CORS issues with different ports
+  API_URL = 'http://localhost:3100/api';
+  
+  // For production or when served from the same domain
+  // API_URL = window.location.pathname.startsWith('/app') 
+  //   ? '/api' // When served from /app path, use relative URL
+  //   : 'http://localhost:3100/api'; // Direct access
+}
+
+// Ensure axios always sends credentials
+axios.defaults.withCredentials = true;
+
+// Interface for instance creation
+export interface StartInstanceParams {
+  threadId: string;
+  githubUrl?: string;
+  openAIApiKey?: string;
+  projectRoot?: string;
+  model?: string;
+  autoCommit?: boolean;
 }
 
 // API client for the Aider service
@@ -21,13 +38,7 @@ export const aiderApi = {
   /**
    * Start a new Aider instance
    */
-  startInstance: async (params: {
-    threadId: string;
-    openAIApiKey: string;
-    projectRoot: string;
-    model?: string;
-    autoCommit?: boolean;
-  }) => {
+  startInstance: async (params: StartInstanceParams) => {
     try {
       const response = await axios.post(`${API_URL}/instances`, params);
       return response.data;
@@ -119,15 +130,54 @@ export const aiderApi = {
     }
 
     // Determine the WebSocket URL based on the current path
-    const wsUrl = window.location.pathname.startsWith('/app')
-      ? window.location.origin // When served from /app, use the same origin
-      : 'http://localhost:3100'; // Direct access
+    const wsUrl = 'http://localhost:3100'; // Always use direct access in development
+    console.log(`Connecting to WebSocket at ${wsUrl} for thread ${threadId}`);
 
-    // Connect to the WebSocket server
-    socket = io(wsUrl);
+    // Connect to the WebSocket server with retry
+    socket = io(wsUrl, {
+      withCredentials: true,
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 10000
+    });
 
-    // Join the room for this thread
-    socket.emit('join', { threadId });
+    // Add event listeners for connection status
+    socket.on('connect', () => {
+      console.log(`WebSocket connected successfully to ${wsUrl}`);
+      // Join the room for this thread
+      if (socket) {
+        socket.emit('join', { threadId });
+      }
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('WebSocket connection error:', err);
+      onLog({
+        source: 'system',
+        message: `Connection error: ${err.message}. Trying to reconnect...`
+      });
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn(`WebSocket disconnected: ${reason}`);
+      onLog({
+        source: 'system',
+        message: `Disconnected from server: ${reason}`
+      });
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log(`WebSocket reconnected after ${attemptNumber} attempts`);
+      // Re-join the room after reconnection
+      if (socket) {
+        socket.emit('join', { threadId });
+      }
+      onLog({
+        source: 'system',
+        message: `Reconnected to server`
+      });
+    });
 
     // Listen for logs
     socket.on('log', onLog);
@@ -135,6 +185,10 @@ export const aiderApi = {
     return () => {
       if (socket) {
         socket.off('log');
+        socket.off('connect');
+        socket.off('connect_error');
+        socket.off('disconnect');
+        socket.off('reconnect');
         socket.disconnect();
         socket = null;
       }

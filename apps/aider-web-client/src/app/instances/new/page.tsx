@@ -9,11 +9,7 @@ import aiderApi from '@/lib/api';
 export default function NewInstancePage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
-    threadId: '',
-    openAIApiKey: '',
-    projectRoot: '',
-    model: 'gpt-4',
-    autoCommit: false,
+    githubUrl: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,13 +30,12 @@ export default function NewInstancePage() {
     checkApiStatus();
   }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    const checked = (e.target as HTMLInputElement).checked;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
     
     setFormData({
       ...formData,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: value,
     });
   };
 
@@ -56,8 +51,18 @@ export default function NewInstancePage() {
     setError(null);
 
     try {
-      await aiderApi.startInstance(formData);
-      router.push(`/instances/${formData.threadId}`);
+      // Extract repository name from GitHub URL to use as threadId
+      const urlParts = formData.githubUrl.split('/');
+      const repoName = urlParts[urlParts.length - 1];
+      
+      // Create config with just the essential information
+      const instanceConfig = {
+        threadId: repoName,
+        githubUrl: formData.githubUrl,
+      };
+
+      await aiderApi.startInstance(instanceConfig);
+      router.push(`/instances/${repoName}`);
     } catch (err: any) {
       console.error('Error starting instance:', err);
       setError(err?.response?.data?.error || 'Failed to start Aider instance. Please try again.');
@@ -133,95 +138,22 @@ export default function NewInstancePage() {
           ) : (
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <form onSubmit={handleSubmit}>
-                <div className="mb-4">
-                  <label htmlFor="threadId" className="block text-gray-700 dark:text-gray-200 font-medium mb-2">
-                    Thread ID
-                  </label>
-                  <input
-                    type="text"
-                    id="threadId"
-                    name="threadId"
-                    value={formData.threadId}
-                    onChange={handleChange}
-                    placeholder="E.g., my-project-thread"
-                    required
-                    className="input w-full"
-                  />
-                  <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                    A unique identifier for this Aider instance
-                  </p>
-                </div>
-                
-                <div className="mb-4">
-                  <label htmlFor="openAIApiKey" className="block text-gray-700 dark:text-gray-200 font-medium mb-2">
-                    OpenAI API Key
-                  </label>
-                  <input
-                    type="password"
-                    id="openAIApiKey"
-                    name="openAIApiKey"
-                    value={formData.openAIApiKey}
-                    onChange={handleChange}
-                    placeholder="sk-..."
-                    required
-                    className="input w-full"
-                  />
-                  <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                    Your OpenAI API key for GPT-4 access
-                  </p>
-                </div>
-                
-                <div className="mb-4">
-                  <label htmlFor="projectRoot" className="block text-gray-700 dark:text-gray-200 font-medium mb-2">
-                    Project Root
-                  </label>
-                  <input
-                    type="text"
-                    id="projectRoot"
-                    name="projectRoot"
-                    value={formData.projectRoot}
-                    onChange={handleChange}
-                    placeholder="/path/to/your/project"
-                    required
-                    className="input w-full"
-                  />
-                  <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                    Absolute path to your project directory (must be a Git repository)
-                  </p>
-                </div>
-                
-                <div className="mb-4">
-                  <label htmlFor="model" className="block text-gray-700 dark:text-gray-200 font-medium mb-2">
-                    Model
-                  </label>
-                  <select
-                    id="model"
-                    name="model"
-                    value={formData.model}
-                    onChange={handleChange}
-                    className="input w-full"
-                  >
-                    <option value="gpt-4">GPT-4</option>
-                    <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                  </select>
-                </div>
-                
                 <div className="mb-6">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      name="autoCommit"
-                      checked={formData.autoCommit}
-                      onChange={handleChange}
-                      className="mr-2"
-                    />
-                    <span className="text-gray-700 dark:text-gray-200">
-                      Auto-commit changes
-                    </span>
+                  <label htmlFor="githubUrl" className="block text-gray-700 dark:text-gray-200 font-medium mb-2">
+                    GitHub Repository URL
                   </label>
+                  <input
+                    type="text"
+                    id="githubUrl"
+                    name="githubUrl"
+                    value={formData.githubUrl}
+                    onChange={handleChange}
+                    placeholder="https://github.com/username/repository"
+                    required
+                    className="input w-full"
+                  />
                   <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                    Automatically commit changes made by Aider
+                    Enter the full URL to the GitHub repository you want to analyze
                   </p>
                 </div>
                 
@@ -248,7 +180,7 @@ export default function NewInstancePage() {
       
       <footer className="bg-gray-100 dark:bg-gray-800 py-6">
         <div className="container mx-auto px-4 text-center text-gray-600 dark:text-gray-300">
-          <p>© {new Date().getFullYear()} Aider Web Client</p>
+          <p>Aider Web Client &copy; {new Date().getFullYear()}</p>
         </div>
       </footer>
     </div>

@@ -22,8 +22,17 @@ const app = express();
 const PORT = process.env.PORT || 3100;
 const NEXT_APP_PORT = process.env.NEXT_APP_PORT || 3000;
 
+// Configuration for the default Pioneer repository
+const PIONEER_REPO_URL = 'https://github.com/coinmastersguild/pioneer-desktop-v11';
+const PIONEER_THREAD_ID = 'pioneer-desktop-v11';
+
 // Set up middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:3003', 'http://localhost:3100'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -63,8 +72,61 @@ app.use(
   })
 );
 
-// Set up API routes
-app.use('/api', createRouter(aiderService));
+// Extend the health check endpoint to include the pioneer thread status
+function extendHealthCheck(router: express.Router) {
+  const originalRouter = router;
+  
+  const wrappedRouter = express.Router();
+  
+  // Wrap the health endpoint to add pioneer thread information
+  wrappedRouter.use((req, res, next) => {
+    const originalJson = res.json;
+    
+    // Only intercept the health check endpoint
+    if (req.path === '/health') {
+      res.json = function(body) {
+        // Add pioneer thread info to response
+        const pioneerStatus = aiderService.getStatus(PIONEER_THREAD_ID);
+        
+        if (body && typeof body === 'object') {
+          body.pioneerThread = {
+            status: pioneerStatus ? pioneerStatus.state : 'NOT_RUNNING',
+            threadId: PIONEER_THREAD_ID
+          };
+          
+          // If pioneer thread isn't running, set status to DEGRADED
+          if (!pioneerStatus || pioneerStatus.state !== 'RUNNING') {
+            body.status = 'DEGRADED';
+            if (!body.components) body.components = {};
+            body.components.pioneerThread = {
+              status: 'DOWN',
+              details: { message: 'Pioneer self-improvement thread not running' }
+            };
+          } else {
+            if (!body.components) body.components = {};
+            body.components.pioneerThread = {
+              status: 'UP',
+              details: { message: 'Pioneer self-improvement thread running' }
+            };
+          }
+        }
+        
+        return originalJson.call(this, body);
+      };
+    }
+    
+    next();
+  });
+  
+  // Use the original router
+  wrappedRouter.use(originalRouter);
+  
+  return wrappedRouter;
+}
+
+// Set up API routes with extended health check
+const apiRouter = createRouter(aiderService);
+app.use('/api', extendHealthCheck(apiRouter));
 
 // Proxy requests to the Next.js app
 app.use(['/', '/app', '/_next', '/favicon.ico', '/static'], createProxyMiddleware({
@@ -106,20 +168,94 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Start server
-server.listen(PORT, async () => {
-  console.log(`Aider Service running on port ${PORT}`);
-  console.log(`API documentation available at http://localhost:${PORT}/docs`);
-  console.log(`Web client available at http://localhost:${PORT}/app`);
-  console.log(`NOTE: You must start the Next.js app separately with "npm run dev" in the aider-web-client-new directory`);
-  
-  // Restore previous Aider states
+// Function to start the pioneer self-improvement thread
+async function startPioneerThread() {
   try {
-    await aiderService.restoreStates();
-    console.log('Previous Aider instances restored from database');
+    // Check if pioneer thread already exists and is running
+    const existingStatus = aiderService.getStatus(PIONEER_THREAD_ID);
+    
+    if (existingStatus && existingStatus.state === 'RUNNING') {
+      console.log('Pioneer self-improvement thread is already running');
+      return;
+    }
+    
+    console.log('Starting pioneer self-improvement thread...');
+    
+    // Get OpenAI API key from environment
+    const openAIApiKey = process.env.OPENAI_API_KEY;
+    if (!openAIApiKey) {
+      console.error('Failed to start pioneer thread: OPENAI_API_KEY environment variable is not set');
+      return;
+    }
+    
+    // Start the pioneer thread
+    await aiderService.startAider(PIONEER_THREAD_ID, {
+      githubUrl: PIONEER_REPO_URL,
+      model: 'gpt-4',
+      autoCommit: true,
+      openAIApiKey
+    });
+    
+    console.log('Pioneer self-improvement thread started successfully');
+    
+    // Send initial message to start the improvement process
+    setTimeout(async () => {
+      try {
+        // Log a message directly to terminal
+        console.log('Sending initial command to Pioneer thread...');
+        
+        // Broadcast the message to all connected clients for this thread
+        loggingService.broadcastLog(
+          PIONEER_THREAD_ID,
+          'Starting Pioneer self-improvement process...',
+          'system'
+        );
+        
+        await aiderService.sendCommand(
+          PIONEER_THREAD_ID, 
+          'Follow guild protocol to continually improve this repository. ' +
+          'Look for ways to enhance code quality, fix bugs, and improve the developer experience.'
+        );
+        
+        console.log('Initial command sent to Pioneer thread');
+      } catch (error) {
+        console.error('Failed to send initial command to pioneer thread:', error);
+        
+        // Try to log the error to connected clients
+        loggingService.broadcastLog(
+          PIONEER_THREAD_ID,
+          `Error sending command: ${error instanceof Error ? error.message : String(error)}`,
+          'error'
+        );
+      }
+    }, 5000); // Wait 5 seconds before sending the command
+    
   } catch (error) {
-    console.error('Error restoring Aider states:', error);
+    console.error('Failed to start pioneer thread:', error);
+    
+    // Try to log the error to connected clients
+    loggingService.broadcastLog(
+      PIONEER_THREAD_ID,
+      `Error starting thread: ${error instanceof Error ? error.message : String(error)}`,
+      'error'
+    );
   }
+}
+
+// Start server
+server.listen(PORT, () => {
+  console.log(`Aider service listening on port ${PORT}`);
+  console.log(`API documentation available at http://localhost:${PORT}/docs`);
+  
+  // Restore previously saved states
+  aiderService.restoreStates().catch(err => {
+    console.error('Failed to restore states:', err);
+  });
+  
+  // Start the pioneer self-improvement thread
+  startPioneerThread().catch(err => {
+    console.error('Failed to start pioneer thread:', err);
+  });
 });
 
 // Handle graceful shutdown

@@ -46,7 +46,12 @@ export default function InstancesPage() {
         
         if (isApiOnline) {
           const response = await aiderApi.getAllInstances();
-          setInstances(response);
+          if (response && response.instances && Array.isArray(response.instances)) {
+            setInstances(response.instances);
+          } else {
+            console.error('Unexpected API response format:', response);
+            setInstances([]);
+          }
           setError(null);
         } else {
           setError('Failed to load instances. The Aider service is not running.');
@@ -54,6 +59,7 @@ export default function InstancesPage() {
       } catch (err) {
         console.error('Error fetching instances:', err);
         setError('Failed to load instances. Please check if Aider service is running.');
+        setInstances([]);
       } finally {
         setLoading(false);
       }
@@ -78,7 +84,7 @@ export default function InstancesPage() {
     }
   };
 
-  const getStatusBadgeClass = (state: string) => {
+  const getStatusBadgeClass = (state?: string) => {
     switch (state) {
       case 'RUNNING':
         return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
@@ -222,75 +228,81 @@ export default function InstancesPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6">
-              {instances.map((instance) => (
-                <div 
-                  key={instance.threadId} 
-                  className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all border border-gray-100 dark:border-gray-700 overflow-hidden"
-                >
-                  <div className="p-6">
-                    <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-                      <div>
-                        <div className="flex items-center mb-2">
-                          <h2 className="text-xl font-semibold text-primary-600 dark:text-primary-400 mr-3">{instance.threadId}</h2>
-                          <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full ${getStatusBadgeClass(instance.status.state)}`}>
-                            {instance.status.state}
-                          </span>
+              {instances.map((instance) => {
+                if (!instance || !instance.threadId) {
+                  return null;
+                }
+                
+                return (
+                  <div 
+                    key={instance.threadId} 
+                    className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all border border-gray-100 dark:border-gray-700 overflow-hidden"
+                  >
+                    <div className="p-6">
+                      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                        <div>
+                          <div className="flex items-center mb-2">
+                            <h2 className="text-xl font-semibold text-primary-600 dark:text-primary-400 mr-3">{instance.threadId}</h2>
+                            <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full ${getStatusBadgeClass(instance?.status?.state)}`}>
+                              {instance?.status?.state || 'UNKNOWN'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-gray-600 dark:text-gray-300 text-sm mb-4">
+                            <div className="flex items-start">
+                              <svg className="h-5 w-5 mr-2 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                              </svg>
+                              <div>
+                                <span className="font-medium block mb-1">Project:</span>
+                                <span className="text-xs break-all">{instance?.configuration?.projectRoot || 'N/A'}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center">
+                              <svg className="h-5 w-5 mr-2 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                              </svg>
+                              <div>
+                                <span className="font-medium block mb-1">Model:</span>
+                                <span>{instance?.configuration?.model || 'N/A'}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center sm:col-span-2">
+                              <svg className="h-5 w-5 mr-2 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div>
+                                <span className="font-medium block mb-1">Last Activity:</span>
+                                <span>{instance?.lastActivity ? formatDate(instance.lastActivity) : 'N/A'}</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-gray-600 dark:text-gray-300 text-sm mb-4">
-                          <div className="flex items-start">
-                            <svg className="h-5 w-5 mr-2 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                        
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Link 
+                            href={`/instances/${instance.threadId}`}
+                            className="btn btn-primary text-center flex items-center justify-center gap-2"
+                          >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                             </svg>
-                            <div>
-                              <span className="font-medium block mb-1">Project:</span>
-                              <span className="text-xs break-all">{instance.configuration.projectRoot}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center">
-                            <svg className="h-5 w-5 mr-2 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            <span>Open Chat</span>
+                          </Link>
+                          <button 
+                            onClick={() => handleDeleteInstance(instance.threadId)}
+                            className="btn btn-secondary text-center flex items-center justify-center gap-2"
+                          >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
-                            <div>
-                              <span className="font-medium block mb-1">Model:</span>
-                              <span>{instance.configuration.model}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center sm:col-span-2">
-                            <svg className="h-5 w-5 mr-2 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <div>
-                              <span className="font-medium block mb-1">Last Activity:</span>
-                              <span>{formatDate(instance.lastActivity)}</span>
-                            </div>
-                          </div>
+                            <span>Stop & Delete</span>
+                          </button>
                         </div>
-                      </div>
-                      
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <Link 
-                          href={`/instances/${instance.threadId}`}
-                          className="btn btn-primary text-center flex items-center justify-center gap-2"
-                        >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          <span>Open Chat</span>
-                        </Link>
-                        <button 
-                          onClick={() => handleDeleteInstance(instance.threadId)}
-                          className="btn btn-secondary text-center flex items-center justify-center gap-2"
-                        >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                          <span>Stop & Delete</span>
-                        </button>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
